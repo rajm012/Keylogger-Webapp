@@ -10,3 +10,4 @@ schedule
 Pillow 
 smtplib
 psycopg2-binary
+pyautogui

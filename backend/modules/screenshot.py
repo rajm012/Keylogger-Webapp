@@ -1,20 +1,28 @@
-from PIL import ImageGrab
 import os
 import time
-import db
+from supabase import create_client
+from PIL import ImageGrab
+from io import BytesIO
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Supabase credentials
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+
+supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 def capture_screenshot():
-    """Capture a screenshot and store it in the database."""
-    try:
-        timestamp = time.strftime("%Y%m%d-%H%M%S")
-        screenshot_path = f"logs/screenshots/screenshot_{timestamp}.png"
-        os.makedirs("logs/screenshots", exist_ok=True)
-        
-        screenshot = ImageGrab.grab()
-        screenshot.save(screenshot_path)
+    img = ImageGrab.grab()
+    img_bytes = BytesIO()
+    img.save(img_bytes, format="PNG")
+    img_bytes.seek(0)
 
-        # Store in database
-        db.store_screenshot(screenshot_path)
+    file_path = f"screenshots/{int(time.time())}.png"
+    response = supabase.storage.from_("screenshots").upload(file_path, img_bytes, content_type="image/png")
 
-    except Exception as e:
-        print(f"Error capturing screenshot: {e}")
+    return response.get("Key", "")
+
+if __name__ == "__main__":
+    print(capture_screenshot())
