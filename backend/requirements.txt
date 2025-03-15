@@ -11,3 +11,4 @@ Pillow
 smtplib
 psycopg2-binary
 pyautogui
+email
