@@ -1,0 +1,12 @@
+flask
+flask-cors
+flask-socketio
+pymysql 
+python-dotenv 
+requests 
+transformers 
+pynput 
+schedule 
+Pillow 
+smtplib
+psycopg2-binary
