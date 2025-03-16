@@ -4,15 +4,23 @@ import os
 import pyautogui
 import smtplib
 import psycopg2
-import pynput  # For keylogging
-from pynput.keyboard import Listener  # Key listener
+import pynput
+from pynput.keyboard import Listener
 from dotenv import load_dotenv
 from flask import Flask, jsonify
 from flask_cors import CORS
 from email.message import EmailMessage
 import mimetypes
+from flask import Flask, request, jsonify
+# from clerk_backend_api import Clerk
+import requests
+import jwt
+from flask import Flask, request, jsonify
 
-# Load environment variables
+CLERK_JWT_PUBLIC_KEY = os.getenv("CLERK_JWT_PUBLIC_KEY")
+CLERK_API_URL = "https://api.clerk.dev/v1"
+
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -134,6 +142,30 @@ def monitor_activity():
             if time.time() - last_email_time >= REPORT_INTERVAL:
                 send_email_report()
                 last_email_time = time.time()
+
+def verify_clerk_token(token):
+    try:
+        # Decode the JWT token using Clerk's public key
+        decoded_token = jwt.decode(token, CLERK_JWT_PUBLIC_KEY, algorithms=["RS256"])
+        return decoded_token
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+    
+@app.route("/protected", methods=["GET"])
+def protected_route():
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    token = auth_header.split(" ")[1]
+    user_data = verify_clerk_token(token)
+
+    if not user_data:
+        return jsonify({"error": "Invalid Token"}), 401
+
+    return jsonify({"message": "Authenticated", "user": user_data})
 
 
 ### **🟢 Start Monitoring API**
