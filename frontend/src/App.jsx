@@ -1,15 +1,13 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import Dashboard from "./pages/dashboard";
 import React from "react";
+import StartStopButtons from "./components/StartStopButtons";
 
-const App = () => {
+function App() {
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-      </Routes>
-    </Router>
+    <div style={{ textAlign: "center", marginTop: "50px" }}>
+      <h1>Keylogger Monitoring System</h1>
+      <StartStopButtons />
+    </div>
   );
-};
+}
 
 export default App;
