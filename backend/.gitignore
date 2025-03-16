@@ -1,2 +1,2 @@
 .env
-logs/screenshots/
+modules/__pycache__

