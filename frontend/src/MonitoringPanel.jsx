@@ -10,6 +10,10 @@ function MonitoringPanel() {
     const navigate = useNavigate();
 
     useEffect(() => {
+        checkMonitoringStatus();
+    }, []);
+
+    useEffect(() => {
         if (isMonitoring) {
             fetchLogs();
         }
@@ -51,6 +55,17 @@ function MonitoringPanel() {
         }
     };
 
+    const checkMonitoringStatus = async () => {
+        try {
+            const response = await fetch("http://127.0.0.1:5000/get_monitoring_status");
+            const data = await response.json();
+            setIsMonitoring(data.monitoring);
+        } catch (error) {
+            console.error("Error fetching monitoring status:", error);
+        }
+    };
+
+
     const handleChangeInterval = async () => {
         if (setIsMonitoring(true)){
             await stopMonitoring();
@@ -83,8 +98,10 @@ function MonitoringPanel() {
 
     return (
         <>
-            <button className="start-btn" onClick={startMonitoring}>Start Monitoring</button>
-            <button className="stop-btn" onClick={stopMonitoring}>Stop Monitoring</button>
+            <button className="start-btn" onClick={startMonitoring} disabled={isMonitoring}>Start Monitoring</button>
+            
+            <button className="stop-btn" onClick={stopMonitoring} disabled={!isMonitoring}>Stop Monitoring</button>
+
             <button className="change-interval-btn" onClick={handleChangeInterval}>Change Credentials</button>
 
             <div className="status">
