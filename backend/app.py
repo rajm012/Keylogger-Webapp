@@ -30,7 +30,7 @@ app = Flask(__name__)
 CORS(app)
 
 
-app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql://neondb_owner:npg_WpoSvn9gtdE8@ep-broad-frog-a1ekybq7-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("SQLALCHEMY_DATABASE_URI")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 
