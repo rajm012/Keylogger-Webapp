@@ -53,8 +53,8 @@ function MonitoringPanel() {
       } catch (error) {
           console.error("Error fetching logs:", error);
       }
-  };
-
+    };
+  
     const startMonitoring = async () => {
         try {
             const response = await fetch("http://127.0.0.1:5000/start_monitoring", { method: "POST" });
@@ -99,14 +99,16 @@ function MonitoringPanel() {
 
             <h2>Captured Screenshots</h2>
             <div className="screenshot-gallery">
-                {screenshots.length > 0 ? (
-                    screenshots.map((img, index) => (
-                        <img key={index} src={`http://127.0.0.1:5000/screenshots/${img}`} alt="screenshot" />
-                    ))
+              {screenshots.length > 0 ? (
+                  screenshots.map((img, index) => (
+                      <img key={index} src={img} alt={`screenshot-${index}`} width="300px" />
+                  ))
                 ) : (
-                    <p>No screenshots captured yet.</p>
-                )}
+                  <p>No screenshots captured yet.</p>
+                )
+              }
             </div>
+
         </>
     );
 }
