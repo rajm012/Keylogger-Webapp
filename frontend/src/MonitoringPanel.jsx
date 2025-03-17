@@ -63,6 +63,24 @@ function MonitoringPanel() {
         
     };
 
+    const downloadLogs = async () => {
+        try {
+            const response = await fetch("http://127.0.0.1:5000/download_logs");
+            if (!response.ok) throw new Error("Failed to download logs");
+    
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "keylogger_logs.zip"; // Download as ZIP
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        } catch (error) {
+            console.error("Error downloading logs:", error);
+        }
+    };
+
     return (
         <>
             <button className="start-btn" onClick={startMonitoring}>Start Monitoring</button>
@@ -95,6 +113,12 @@ function MonitoringPanel() {
                     <p>No screenshots captured yet.</p>
                 )}
             </div>
+
+            <>
+            <button className="download-btn" onClick={downloadLogs}>
+                Download Logs
+            </button>
+            </>
         </>
     );
 }

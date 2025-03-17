@@ -68,7 +68,6 @@ button {
 }
 
 
-/* Status Indicator */
 .status {
     margin-top: 20px;
     font-size: 18px;
@@ -169,3 +168,11 @@ button {
     background: #218838;
 }
 
+.download-btn{
+    background: #007bff;
+    color: white;
+}
+
+.download-btn:hover{
+    background: #0056b3;
+}
