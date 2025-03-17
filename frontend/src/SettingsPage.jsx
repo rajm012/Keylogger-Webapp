@@ -5,7 +5,7 @@ import "./styles.css";
 
 function SettingsPage() {
     const [settings, setSettings] = useState({
-        email_interval: 600,
+        email_interval: 60,
         screenshot_interval: 30,
         keylog_interval: 5,
         sender_mail: "",
@@ -25,7 +25,8 @@ function SettingsPage() {
             if (!response.ok) throw new Error("Failed to fetch settings");
             const data = await response.json();
             setSettings(data);
-        } catch (error) {
+        } 
+        catch (error) {
             console.error("Error fetching settings:", error);
         }
     };
@@ -47,10 +48,15 @@ function SettingsPage() {
 
             alert("✅ Settings Updated Successfully!");
             navigate("/");
-        } catch (error) {
+        } 
+        catch (error) {
             console.error("Error updating settings:", error);
         }
     };
+
+    const abortSettings = () => {
+        navigate("/");
+    }
 
     return (
         <div className="settings-container">
@@ -77,6 +83,8 @@ function SettingsPage() {
             <input type="email" name="receiver_mail" value={settings.receiver_mail} onChange={handleChange} />
 
             <button className="save-btn" onClick={saveSettings}>Save Settings</button>
+
+            <button className="abort-btn" onClick={abortSettings}>Return to Dashboard</button>
         </div>
     );
 }

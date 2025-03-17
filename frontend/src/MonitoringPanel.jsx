@@ -52,15 +52,22 @@ function MonitoringPanel() {
     };
 
     const handleChangeInterval = async () => {
-        await stopMonitoring();
-        navigate("/settings");
+        if (setIsMonitoring(true)){
+            await stopMonitoring();
+            navigate("/settings");
+        }
+
+        else{
+            navigate("/settings");
+        }
+        
     };
 
     return (
         <>
             <button className="start-btn" onClick={startMonitoring}>Start Monitoring</button>
             <button className="stop-btn" onClick={stopMonitoring}>Stop Monitoring</button>
-            <button className="change-interval-btn" onClick={handleChangeInterval}>Change Interval</button>
+            <button className="change-interval-btn" onClick={handleChangeInterval}>Change Credentials</button>
 
             <div className="status">
                 Status:{" "}

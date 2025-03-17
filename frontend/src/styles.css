@@ -48,6 +48,26 @@ button {
     background-color: #b71c1c;
 }
 
+.change-interval-btn{
+    background-color: #ffc107;
+    color: white;
+}
+
+
+.change-interval-btn:hover {
+    background-color: #ff9800;
+}
+
+.abort-btn {
+    background-color: #6c757d;
+    color: white;
+}
+
+.abort-btn:hover {
+    background-color: #5a6268;
+}
+
+
 /* Status Indicator */
 .status {
     margin-top: 20px;

@@ -21,10 +21,6 @@ function App() {
 
                     <SignedIn>
                         <UserButton />
-                        <nav>
-                            <Link to="/">Dashboard</Link>
-                            <Link to="/settings">Settings</Link>
-                        </nav>
                         <Routes>
                             <Route path="/" element={<MonitoringPanel />} />
                             <Route path="/settings" element={<SettingsPage />} />
