@@ -1,57 +1,114 @@
-import {useState} from "react";
-import axios from "axios";
+import { useState, useEffect } from "react";
+import { ClerkProvider, SignedIn, SignedOut, SignIn, UserButton } from "@clerk/clerk-react";
+import "./styles.css";
 import React from "react";
-import "./index.css";
+
+const clerkKey = "pk_test_am9pbnQtYmFzaWxpc2stMjcuY2xlcmsuYWNjb3VudHMuZGV2JA";
 
 function App() {
-  const [loading, setLoading] = useState(false);
-  const [monitoring, setMonitoring] = useState(false);
+    return (
+        <ClerkProvider publishableKey={clerkKey}>
+            <MainApp />
+        </ClerkProvider>
+    );
+}
 
-  const handleMonitoring = async (action) => {
-    setLoading(true);
-    try {
-      const response = await axios.post(
-        `http://localhost:5000/${action}_monitoring`
-      );
-      setMonitoring(action === "start");
-      console.log(response.data);
-    } catch (error) {
-      console.error("Error:", error);
-    }
-    setLoading(false);
+function MainApp() {
+    return (
+        <div className="container">
+            <h1>Keylogger Monitoring</h1>
+
+            <SignedOut>
+                <SignIn />
+            </SignedOut>
+
+            <SignedIn>
+                <UserButton />
+                <MonitoringPanel />
+            </SignedIn>
+        </div>
+    );
+}
+
+function MonitoringPanel() {
+    const [isMonitoring, setIsMonitoring] = useState(false);
+    const [keystrokes, setKeystrokes] = useState([]);
+    const [screenshots, setScreenshots] = useState([]);
+
+    useEffect(() => {
+        if (isMonitoring) {
+            fetchLogs();
+        }
+    }, [isMonitoring]);
+
+    const fetchLogs = async () => {
+      try {
+          const response = await fetch("http://127.0.0.1:5000/get_logs");
+          if (!response.ok) {
+              throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+          const data = await response.json();
+          setKeystrokes(data.keystrokes || []);
+          setScreenshots(data.screenshots || []);
+      } catch (error) {
+          console.error("Error fetching logs:", error);
+      }
   };
 
-  return (
-    <div className="flex flex-col items-center justify-center h-screen bg-gray-900 text-white">
-      <h1 className="text-3xl font-bold mb-4">Keylogger WebApp</h1>
+    const startMonitoring = async () => {
+        try {
+            const response = await fetch("http://127.0.0.1:5000/start_monitoring", { method: "POST" });
+            if (response.ok) {
+                setIsMonitoring(true);
+            }
+        } catch (error) {
+            console.error("Error starting monitoring:", error);
+        }
+    };
 
-      <div className="flex gap-4">
-        <button
-          onClick={() => handleMonitoring("start")}
-          disabled={monitoring || loading}
-          className={`px-4 py-2 rounded ${
-            monitoring
-              ? "bg-gray-600 cursor-not-allowed"
-              : "bg-green-500 hover:bg-green-600"
-          }`}
-        >
-          {loading && monitoring ? "Starting..." : "Start Monitoring"}
-        </button>
+    const stopMonitoring = async () => {
+        try {
+            const response = await fetch("http://127.0.0.1:5000/stop_monitoring", { method: "POST" });
+            if (response.ok) {
+                setIsMonitoring(false);
+            }
+        } catch (error) {
+            console.error("Error stopping monitoring:", error);
+        }
+    };
 
-        <button
-          onClick={() => handleMonitoring("stop")}
-          disabled={!monitoring || loading}
-          className={`px-4 py-2 rounded ${
-            !monitoring
-              ? "bg-gray-600 cursor-not-allowed"
-              : "bg-red-500 hover:bg-red-600"
-          }`}
-        >
-          {loading && !monitoring ? "Stopping..." : "Stop Monitoring"}
-        </button>
-      </div>
-    </div>
-  );
+    return (
+        <>
+            <button className="start-btn" onClick={startMonitoring}>Start Monitoring</button>
+            <button className="stop-btn" onClick={stopMonitoring}>Stop Monitoring</button>
+            <div className="status">
+                Status:{" "}
+                <span className={isMonitoring ? "active" : "inactive"}>
+                    {isMonitoring ? "Active 🟢" : "Inactive 🔴"}
+                </span>
+            </div>
+
+            <h2>Keystrokes Log</h2>
+            <div className="log-box">
+                {keystrokes.length > 0 ? (
+                    keystrokes.map((log, index) => <p key={index}>{log}</p>)
+                ) : (
+                    <p>No logs recorded yet.</p>
+                )}
+            </div>
+
+            <h2>Captured Screenshots</h2>
+            <div className="screenshot-gallery">
+                {screenshots.length > 0 ? (
+                    screenshots.map((img, index) => (
+                        <img key={index} src={`http://127.0.0.1:5000/screenshots/${img}`} alt="screenshot" />
+                    ))
+                ) : (
+                    <p>No screenshots captured yet.</p>
+                )}
+            </div>
+        </>
+    );
 }
 
 export default App;

