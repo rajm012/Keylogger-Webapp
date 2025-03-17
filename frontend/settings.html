@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Update Monitoring Settings</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 50px;
+            text-align: center;
+        }
+        label, input, button {
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Update Monitoring Settings</h2>
+
+    <form id="settingsForm">
+        <label for="emailInterval">Email Interval (seconds):</label>
+        <input type="number" id="emailInterval" name="emailInterval" required>
+        <br>
+
+        <label for="screenshotInterval">Screenshot Interval (seconds):</label>
+        <input type="number" id="screenshotInterval" name="screenshotInterval" required>
+        <br>
+
+        <button type="submit">Update Settings</button>
+    </form>
+
+    <p id="message"></p>
+
+    <script>
+        document.getElementById("settingsForm").addEventListener("submit", function(event) {
+            event.preventDefault();
+    
+            let emailInterval = document.getElementById("emailInterval").value;
+            let screenshotInterval = document.getElementById("screenshotInterval").value;
+    
+            fetch("http://127.0.0.1:5000/update_settings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    email_interval: emailInterval,
+                    screenshot_interval: screenshotInterval
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert("Settings updated successfully! Redirecting...");
+                window.location.href = "http://localhost:5173";
+            })
+            .catch(error => console.error("Error updating settings:", error));
+        });
+    </script>
+    
+</body>
+</html>

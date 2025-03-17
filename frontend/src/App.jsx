@@ -1,17 +1,35 @@
 import { useState, useEffect } from "react";
+import { BrowserRouter as Router, Routes, Route, useNavigate } from "react-router-dom"; 
 import { ClerkProvider, SignedIn, SignedOut, SignIn, UserButton } from "@clerk/clerk-react";
 import "./styles.css";
 import React from "react";
 
 const clerkKey = "pk_test_am9pbnQtYmFzaWxpc2stMjcuY2xlcmsuYWNjb3VudHMuZGV2JA";
 
+
+function SettingsPage() {
+    return (
+        <div>
+            <h1>Settings Page</h1>
+            <p>Modify your settings here...</p>
+        </div>
+    );
+}
+
+
 function App() {
     return (
         <ClerkProvider publishableKey={clerkKey}>
-            <MainApp />
+            <Router> {/* ✅ Wrap with Router */}
+                <Routes>
+                    <Route path="/" element={<MainApp />} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                </Routes>
+            </Router>
         </ClerkProvider>
     );
 }
+
 
 function MainApp() {
     return (
@@ -34,6 +52,7 @@ function MonitoringPanel() {
     const [isMonitoring, setIsMonitoring] = useState(false);
     const [keystrokes, setKeystrokes] = useState([]);
     const [screenshots, setScreenshots] = useState([]);
+    const navigate = useNavigate();
 
     useEffect(() => {
         if (isMonitoring) {
@@ -77,10 +96,17 @@ function MonitoringPanel() {
         }
     };
 
+    const handleChangeInterval = async () => {
+        await stopMonitoring();
+        navigate("/settings.html");
+    };
+
     return (
         <>
             <button className="start-btn" onClick={startMonitoring}>Start Monitoring</button>
             <button className="stop-btn" onClick={stopMonitoring}>Stop Monitoring</button>
+            <button className="change-interval-btn" onClick={handleChangeInterval}>Change Interval</button>
+
             <div className="status">
                 Status:{" "}
                 <span className={isMonitoring ? "active" : "inactive"}>

