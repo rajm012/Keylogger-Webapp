@@ -1,7 +1,8 @@
 import threading
 import time
 import os
-import pyautogui
+if os.getenv("RENDER") is None:
+    import pyautogui
 import smtplib
 import pynput
 import jwt
