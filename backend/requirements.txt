@@ -7,8 +7,7 @@ requests
 transformers 
 pynput 
 schedule 
-Pillow 
-smtplib
+Pillow
 psycopg2-binary
 pyautogui
 email
