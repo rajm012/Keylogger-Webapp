@@ -10,3 +10,4 @@ schedule>=1.0.0
 Pillow>=8.0.0
 psycopg2-binary>=2.9.0
 sqlalchemy>=1.4.0
+gunicorn>=20.0.0
